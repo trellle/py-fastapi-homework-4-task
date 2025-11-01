@@ -32,7 +32,6 @@ from schemas import (
     TokenRefreshResponseSchema
 )
 from security.interfaces import JWTAuthManagerInterface
-from config.settings import base_app_settings
 
 router = APIRouter()
 
@@ -71,6 +70,7 @@ async def register_user(
         background_tasks: BackgroundTasks,
         db: AsyncSession = Depends(get_db),
         email_sender: EmailSender = Depends(get_accounts_email_notificator),
+        base_app_settings = Depends(get_settings)
 ) -> UserRegistrationResponseSchema:
     """
     Endpoint for user registration.
@@ -177,7 +177,8 @@ async def activate_account(
         activation_data: UserActivationRequestSchema,
         background_tasks: BackgroundTasks,
         db: AsyncSession = Depends(get_db),
-        email_sender: EmailSender = Depends(get_accounts_email_notificator)
+        email_sender: EmailSender = Depends(get_accounts_email_notificator),
+        base_app_settings = Depends(get_settings)
 ) -> MessageResponseSchema:
     """
     Endpoint to activate a user's account.
@@ -256,6 +257,7 @@ async def request_password_reset_token(
         background_tasks: BackgroundTasks,
         db: AsyncSession = Depends(get_db),
         email_sender: EmailSender = Depends(get_accounts_email_notificator),
+        base_app_settings = Depends(get_settings)
 ) -> MessageResponseSchema:
     """
     Endpoint to request a password reset token.
@@ -284,7 +286,7 @@ async def request_password_reset_token(
     reset_token = PasswordResetTokenModel(user_id=cast(int, user.id))
     db.add(reset_token)
     await db.commit()
-    reset_url = f"http://{base_app_settings.HOST_NAME}/api/v1/auth/reset-password?token={reset_token}"
+    reset_url = f"http://{base_app_settings.HOST_NAME}/api/v1/auth/reset-password?token={reset_token.token}"
     background_tasks.add_task(
         email_sender.send_password_reset_email,
         user.email,
@@ -343,7 +345,8 @@ async def reset_password(
         data: PasswordResetCompleteRequestSchema,
         background_tasks: BackgroundTasks,
         db: AsyncSession = Depends(get_db),
-        email_sender: EmailSender = Depends(get_accounts_email_notificator)
+        email_sender: EmailSender = Depends(get_accounts_email_notificator),
+        base_app_settings = Depends(get_settings)
 ) -> MessageResponseSchema:
     """
     Endpoint for resetting a user's password.

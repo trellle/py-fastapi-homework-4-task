@@ -1,15 +1,17 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
-from datetime import datetime, timezone
 from storages import S3StorageInterface
+from sqlalchemy.orm import joinedload
 from sqlalchemy import select
 from database import get_db
 from security.http import get_token
 from config import get_jwt_auth_manager
 from clients import get_s3_storage_client
+from exceptions.security import TokenExpiredError
+from exceptions.storage import BaseS3Error
 from security.interfaces import JWTAuthManagerInterface
 from schemas.profiles import UserProfileSchema, ProfileResponseSchema
-from database.models.accounts import UserGroupEnum, UserModel, UserGroupModel, UserProfileModel
+from database.models.accounts import UserGroupEnum, UserModel, UserProfileModel
 
 router = APIRouter()
 
@@ -21,16 +23,16 @@ async def create_user_profile(payload: UserProfileSchema,
                               s3_client: S3StorageInterface = Depends(get_s3_storage_client),
                               db: AsyncSession = Depends(get_db),
                               token: str = Depends(get_token)):
-    token_data = jwt_manager.decode_access_token(token)
-    expire_date = token_data.get["exp"]
-    if expire_date.replace(tzinfo=timezone.utc) < datetime.now(timezone.utc):
+    try:
+        token_data = jwt_manager.decode_access_token(token)
+    except TokenExpiredError:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Token has expired.")
-    response = await db.execute(select(UserModel).join(UserProfileModel).where(UserModel.id == user_id))
+    response = await db.execute(select(UserModel).options(joinedload(UserModel.profile)).where(UserModel.id == user_id))
     user = response.scalar_one_or_none()
     if not user or not user.is_active:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="User not found or not active.")
     user_id_token = token_data.get("user_id")
-    response = await db.execute(select(UserModel).join(UserGroupModel).where(UserModel.id == user_id_token))
+    response = await db.execute(select(UserModel).options(joinedload(UserModel.group)).where(UserModel.id == user_id_token))
     current_user = response.scalar_one_or_none()
     if not current_user:
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Current user not found.")
@@ -47,7 +49,7 @@ async def create_user_profile(payload: UserProfileSchema,
             file_type=content
         )
         avatar_url = await s3_client.get_file_url(avatar_file)
-    except Exception:
+    except BaseS3Error:
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                             detail="Failed to upload avatar. Please try again later.")
     else:

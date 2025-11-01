@@ -1,8 +1,7 @@
 from datetime import date
-from re import S
 
-from fastapi import UploadFile, Form, File, HTTPException
-from pydantic import BaseModel, field_validator, HttpUrl, Field
+from fastapi import UploadFile
+from pydantic import BaseModel, field_validator
 
 from validation import (
     validate_name,
@@ -48,7 +47,7 @@ class BaseUserProfileSchema(BaseModel):
     @classmethod
     def info_validator(cls, value: str):
         if not value or not value.strip():
-            raise ValueError("Name cannot be empty or contain only spaces.")
+            raise ValueError("Info cannot be empty or contain only spaces.")
         return value
 
 
